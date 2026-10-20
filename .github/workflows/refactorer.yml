@@ -1,0 +1,648 @@
+name: Refactorer Tool Workflow
+
+permissions:
+  contents: write
+  pull-requests: write
+
+on:
+  workflow_call:
+    inputs:
+      refactorer_ref:
+        description: Refactorer branch, tag, or SHA used for internal script checkouts. Leave unset for `main`; otherwise set this to the same ref used in the workflow `uses:` line.
+        required: false
+        type: string
+        default: "main"
+      python_version:
+        description: Python version used by the workflow jobs. Leave unset to use `3.13`; set this to the version required by the target repository.
+        required: false
+        type: string
+        default: "3.13"
+      config_file:
+        description: Path to the Refactorer configuration file in the caller repository. Leave unset to use `refactor_configuration.yml`; set this when the caller stores the config elsewhere.
+        required: false
+        type: string
+        default: "refactor_configuration.yml"
+      target_directory:
+        description: Directory in the caller repository to analyze and refactor. Leave unset to use the repository root; set this for nested projects or subdirectories.
+        required: false
+        type: string
+        default: ""
+      base_branch:
+        description: Pull request base branch for generated refactoring PRs. Leave unset to use the caller repository's default branch; set this to target another branch.
+        required: false
+        type: string
+        default: ""
+      max_parallel:
+        description: Maximum number of smells to refactor at the same time. Leave unset to use `2`; lower this to reduce CI load or raise it to process more smells concurrently.
+        required: false
+        type: string
+        default: "2"
+      artifact_retention_days:
+        description: Number of days to retain workflow artifacts.
+        required: false
+        type: number
+        default: 30
+      openai_base_url:
+        description: API base URL used by planning and execution, including /v1. Leave blank to use https://api.openai.com/v1.
+        required: false
+        type: string
+        default: ""
+      reasoner_model:
+        description: Model used to plan refactorings. Leave blank to use gpt-5.6-luna.
+        required: false
+        type: string
+        default: ""
+      coder_model:
+        description: Model used to apply refactorings. Leave blank to use gpt-5.6-luna.
+        required: false
+        type: string
+        default: ""
+      reasoner_reasoning_effort:
+        description: Reasoning effort used to plan refactorings. Leave blank to use xhigh.
+        required: false
+        type: string
+        default: ""
+      coder_reasoning_effort:
+        description: Reasoning effort used to apply refactorings. Defaults to none; set blank to use the Python fallback low.
+        required: false
+        type: string
+        default: "none"
+    secrets:
+      OPENAI_API_KEY:
+        description: OpenAI API key used to generate and apply refactoring proposals. Add this secret in the caller repository with access to the configured OpenAI models.
+        required: true
+      REFACTORER_REPOSITORY_TOKEN:
+        description: GitHub token used to check out the Refactorer repository for internal scripts. Leave unset when `github.token` can read Refactorer; set this when Refactorer is private or needs another token.
+        required: false
+    outputs:
+      smells-detected:
+        description: Whether any smells remain after filtering.
+        value: ${{ jobs.detect-smells.outputs.smells-detected }}
+      smell-uuids:
+        description: JSON array of smell UUIDs selected for refactoring.
+        value: ${{ jobs.detect-smells.outputs.smell-uuids }}
+      target-directory:
+        description: Analysis root directory used for path resolution.
+        value: ${{ jobs.detect-smells.outputs.target-directory }}
+  workflow_dispatch:
+    inputs:
+      refactorer_ref:
+        description: Refactorer branch, tag, or SHA used for internal script checkouts. Leave blank to use the selected workflow branch or commit.
+        required: false
+        type: string
+        default: ""
+      python_version:
+        description: Python version used to run the workflow jobs. Leave unset to use `3.13`; set this when the target project needs another supported Python version.
+        required: false
+        type: string
+        default: "3.13"
+      config_file:
+        description: Path to the Refactorer configuration file. Leave unset to use `refactor_configuration.yml`; set this when the config file is stored elsewhere.
+        required: false
+        type: string
+        default: "refactor_configuration.yml"
+      target_directory:
+        description: Directory to analyze and refactor. Leave unset to use the repository root; set this for nested projects or subdirectories.
+        required: false
+        type: string
+        default: ""
+      base_branch:
+        description: Pull request base branch for generated refactoring PRs. Leave unset to use the repository's default branch; set this to target another branch.
+        required: false
+        type: string
+        default: ""
+      max_parallel:
+        description: Maximum number of smells to refactor at the same time. Leave unset to use `2`; lower this to reduce CI load or raise it to process more smells concurrently.
+        required: false
+        type: string
+        default: "2"
+      artifact_retention_days:
+        description: Number of days to retain workflow artifacts.
+        required: false
+        type: number
+        default: 30
+      openai_base_url:
+        description: API base URL shared by planning and execution, including /v1. Leave blank to use https://api.openai.com/v1.
+        required: false
+        type: string
+        default: ""
+      reasoner_model:
+        description: Model used to plan refactorings. Leave blank to use gpt-5.6-luna.
+        required: false
+        type: string
+        default: ""
+      coder_model:
+        description: Model used to apply refactorings. Leave blank to use gpt-5.6-luna.
+        required: false
+        type: string
+        default: ""
+      reasoner_reasoning_effort:
+        description: Reasoning effort used to plan refactorings. Leave blank to use xhigh.
+        required: false
+        type: string
+        default: ""
+      coder_reasoning_effort:
+        description: Reasoning effort used to apply refactorings. Defaults to none; set blank to use the Python fallback low.
+        required: false
+        type: string
+        default: "none"
+env:
+  REFACTORER_REPOSITORY: jbpextra/RefactorerLM
+  REFACTORER_TOOL_CHECKOUT_PATH: .refactorer-tool
+  # Keep all Refactorer checkouts on one resolved ref. workflow_dispatch falls
+  # back to the selected workflow commit when refactorer_ref is blank.
+  REFACTORER_SOURCE_REF: ${{ inputs.refactorer_ref || github.sha }}
+
+jobs:
+  detect-smells:
+    runs-on: ubuntu-latest
+    outputs:
+      smells-detected: ${{ steps.filter-smells.outputs.smells-detected || 'false' }}
+      smell-uuids: ${{ steps.filter-smells.outputs.smell-uuids || '[]' }}
+      target-directory: ${{ steps.smell-detector.outputs.target-directory }}
+    steps:
+      - name: Install Act dependencies
+        if: ${{ env.ACT }}
+        run: |
+          apt-get update && apt-get install sudo -y
+
+      - name: Set Node.js
+        if: ${{ env.ACT }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+
+      - name: Checkout caller repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Do not perform a full Refactorer checkout before detection. Checkout the
+      # detector config and validator first, then remove the validator before
+      # scanning so repository-root scans do not detect Refactorer code itself.
+      # Replace this with a full checkout after detection.
+      # For workflow_call, set refactorer_ref to the same ref as the caller's
+      # uses value when invoking anything other than main. For workflow_dispatch,
+      # leave it blank to use the selected workflow commit.
+      - name: Checkout Refactorer detector config
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.REFACTORER_REPOSITORY }}
+          ref: ${{ env.REFACTORER_SOURCE_REF }}
+          token: ${{ secrets.REFACTORER_REPOSITORY_TOKEN || github.token }}
+          path: ${{ env.REFACTORER_TOOL_CHECKOUT_PATH }}
+          sparse-checkout: |
+            code_quality_config.yaml
+            scripts/__init__.py
+            scripts/selection_config.py
+          sparse-checkout-cone-mode: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install git+https://github.com/jbpextra/python_smells_detector@add-participant-to-architectural-smells
+          pip install pyyaml
+
+      - name: Validate configuration
+        id: validate-configuration
+        env:
+          CONFIG_FILE: ${{ inputs.config_file }}
+          TARGET_DIRECTORY_INPUT: ${{ inputs.target_directory }}
+          REFACTORER_TOOL_PATH: ${{ github.workspace }}/${{ env.REFACTORER_TOOL_CHECKOUT_PATH }}
+        run: |
+          # Always validate configuration, even when the input overrides its target.
+          if ! TARGET_DIR=$(PYTHONPATH="$REFACTORER_TOOL_PATH" python -P -m scripts.selection_config \
+            --config "$CONFIG_FILE" --target-directory "$TARGET_DIRECTORY_INPUT"); then
+            echo "::error::Refactorer configuration validation failed."
+            exit 1
+          fi
+          echo "target-directory=$TARGET_DIR" >> "$GITHUB_OUTPUT"
+
+          # Only detector configuration should remain in this checkout during analysis.
+          rm -rf "$REFACTORER_TOOL_PATH/scripts"
+
+      - name: Run Smell Detector
+        id: smell-detector
+        env:
+          TARGET_DIR: ${{ steps.validate-configuration.outputs.target-directory }}
+        run: |
+          echo "Analysis target directory: $TARGET_DIR"
+
+          ORIGINAL_DIR=$(pwd)
+          DETECTOR_CONFIG="$GITHUB_WORKSPACE/${{ env.REFACTORER_TOOL_CHECKOUT_PATH }}/code_quality_config.yaml"
+
+          if [ ! -f "$DETECTOR_CONFIG" ]; then
+            echo "::error::Detector config not found: $DETECTOR_CONFIG"
+            exit 1
+          fi
+
+          cd "$TARGET_DIR"
+          analyze_code_quality . --type architectural --config "$DETECTOR_CONFIG" --output "$ORIGINAL_DIR/report.csv" --debug
+          cd "$ORIGINAL_DIR"
+
+          # The detector writes CSV headers even when there are no findings.
+          if [ ! -f report.csv ] || [ ! -s report.csv ]; then
+            echo "::error::Smell detector did not produce a nonempty CSV report: report.csv"
+            exit 1
+          fi
+
+          echo "TARGET_DIR=$TARGET_DIR" >> "$GITHUB_ENV"
+          echo "target-directory=$TARGET_DIR" >> "$GITHUB_OUTPUT"
+          echo "smells-detected=true" >> "$GITHUB_OUTPUT"
+
+      - name: Remove Refactorer detector config checkout
+        if: steps.smell-detector.outputs.smells-detected == 'true'
+        run: |
+          # Remove the sparse config checkout before checking out the full Refactorer source.
+          # Keep this step before any command that imports the full scripts package.
+          rm -rf "$GITHUB_WORKSPACE/${{ env.REFACTORER_TOOL_CHECKOUT_PATH }}"
+
+      - name: Checkout Refactorer tool source
+        if: steps.smell-detector.outputs.smells-detected == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.REFACTORER_REPOSITORY }}
+          ref: ${{ env.REFACTORER_SOURCE_REF }}
+          token: ${{ secrets.REFACTORER_REPOSITORY_TOKEN || github.token }}
+          path: ${{ env.REFACTORER_TOOL_CHECKOUT_PATH }}
+
+      - name: Filter smells based on configuration
+        id: filter-smells
+        if: steps.smell-detector.outputs.smells-detected == 'true'
+        env:
+          CONFIG_FILE: ${{ inputs.config_file }}
+          REFACTORER_TOOL_PATH: ${{ github.workspace }}/${{ env.REFACTORER_TOOL_CHECKOUT_PATH }}
+        run: |
+          if ! EXISTING_BRANCHES=$(git branch -r --list 'origin/refactor/*'); then
+            echo "::error::Cannot read previous-attempt state: remote branch listing failed."
+            exit 1
+          fi
+
+          PYTHONPATH="$REFACTORER_TOOL_PATH" python -P -m scripts.filter_smells \
+            --report-file report.csv \
+            --config "$CONFIG_FILE" \
+            --output-file smells_to_process.json \
+            --existing-branches "$EXISTING_BRANCHES"
+
+          SMELLS_DETECTED=$(cat smells_detected.txt)
+          echo "smells-detected=$SMELLS_DETECTED" >> "$GITHUB_OUTPUT"
+
+          if [ "$SMELLS_DETECTED" = "true" ]; then
+            echo "smell-uuids=$(cat smells_to_process.json)" >> "$GITHUB_OUTPUT"
+          else
+            echo "smell-uuids=[]" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate smell detection summary
+        if: steps.smell-detector.outputs.smells-detected == 'true'
+        env:
+          CONFIG_FILE: ${{ inputs.config_file }}
+          REFACTORER_TOOL_PATH: ${{ github.workspace }}/${{ env.REFACTORER_TOOL_CHECKOUT_PATH }}
+        run: |
+          PYTHONPATH="$REFACTORER_TOOL_PATH" python -P -m scripts.generate_summary \
+            --report-file report.csv \
+            --filtered-report filtered_report.csv \
+            --smells-file smells_to_process.json \
+            --config-file "$CONFIG_FILE" \
+            >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Generate empty summary
+        if: steps.smell-detector.outputs.smells-detected != 'true'
+        run: |
+          echo "## Smell Detection Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**No architectural smells detected.**" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Generate failed detection summary
+        if: always()
+        env:
+          CONFIGURATION_OUTCOME: ${{ steps.validate-configuration.outcome }}
+          DETECTOR_OUTCOME: ${{ steps.smell-detector.outcome }}
+          FILTER_OUTCOME: ${{ steps.filter-smells.outcome }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ "$JOB_STATUS" = "success" ]; then
+            exit 0
+          fi
+
+          echo "## Smell Detection Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$CONFIGURATION_OUTCOME" = "failure" ]; then
+            echo "**Smell detection failed: configuration is missing, unreadable, or invalid.**" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$DETECTOR_OUTCOME" = "failure" ]; then
+            echo "**Smell detection failed: analyzer failed.**" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$FILTER_OUTCOME" = "failure" ]; then
+            echo "**Smell selection failed: selection inputs could not be established. See the validation diagnostic in the job log.**" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "**Smell detection failed due to a job error.**" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload smell report
+        uses: actions/upload-artifact@v4
+        with:
+          name: smell-report
+          path: |
+            report.csv
+            smells_to_process.json
+            filtered_report.csv
+          retention-days: ${{ inputs.artifact_retention_days }}
+          if-no-files-found: ignore
+
+  refactor-smells:
+    needs: detect-smells
+    if: needs.detect-smells.result == 'success' && needs.detect-smells.outputs.smells-detected == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        smell-uuid: ${{ fromJson(needs.detect-smells.outputs.smell-uuids) }}
+      max-parallel: ${{ fromJson(inputs.max_parallel) }}
+      fail-fast: false
+
+    env:
+      OPENAI_BASE_URL: ${{ inputs.openai_base_url || 'https://api.openai.com/v1' }}
+      REASONER_MODEL: ${{ inputs.reasoner_model }}
+      CODER_MODEL: ${{ inputs.coder_model }}
+      REASONER_REASONING_EFFORT: ${{ inputs.reasoner_reasoning_effort }}
+      CODER_REASONING_EFFORT: ${{ inputs.coder_reasoning_effort }}
+
+    steps:
+      - name: Install Act dependencies
+        if: ${{ env.ACT }}
+        run: |
+          apt-get update && apt-get install sudo -y
+
+      - name: Set Node.js
+        if: ${{ env.ACT }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+
+      - name: Checkout caller repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout Refactorer tool source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.REFACTORER_REPOSITORY }}
+          ref: ${{ env.REFACTORER_SOURCE_REF }}
+          token: ${{ secrets.REFACTORER_REPOSITORY_TOKEN || github.token }}
+          path: ${{ env.REFACTORER_TOOL_CHECKOUT_PATH }}
+
+      - name: Resolve base branch
+        env:
+          EVENT_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          INPUT_BASE_BRANCH: ${{ inputs.base_branch }}
+        run: |
+          # Resolve the PR target in priority order: explicit input, origin default branch,
+          # event default branch, then main as the final fallback.
+          if [ -n "$INPUT_BASE_BRANCH" ]; then
+            BASE_BRANCH="$INPUT_BASE_BRANCH"
+          elif git symbolic-ref --quiet --short refs/remotes/origin/HEAD >/dev/null 2>&1; then
+            BASE_BRANCH=$(git symbolic-ref --short refs/remotes/origin/HEAD)
+            BASE_BRANCH=${BASE_BRANCH#origin/}
+          elif [ -n "$EVENT_DEFAULT_BRANCH" ]; then
+            BASE_BRANCH="$EVENT_DEFAULT_BRANCH"
+          else
+            BASE_BRANCH="main"
+          fi
+
+          echo "Using PR base branch: $BASE_BRANCH"
+          echo "BASE_BRANCH=$BASE_BRANCH" >> "$GITHUB_ENV"
+
+      - name: Set target directory
+        env:
+          RESOLVED_TARGET_DIR: ${{ needs.detect-smells.outputs.target-directory }}
+        run: |
+          TARGET_DIR="$RESOLVED_TARGET_DIR"
+          echo "TARGET_DIR=${TARGET_DIR:-.}" >> "$GITHUB_ENV"
+          echo "Using analysis target directory: ${TARGET_DIR:-.}"
+
+      - name: Free disk space
+        run: |
+          # Free hosted-runner disk before installing torch and transformer dependencies.
+          # Keep this before the Python dependency install.
+          df -h
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup || true
+          sudo apt-get clean || true
+          df -h
+
+      - name: Cache HuggingFace models
+        # Cache CodeBERT assets in the workspace so correctness_filter can reuse model
+        # downloads across workflow runs.
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.hf
+          key: hf-cache-${{ runner.os }}-codebert
+          restore-keys: |
+            hf-cache-${{ runner.os }}-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Install dependencies
+        env:
+          PIP_NO_CACHE_DIR: "1"
+          HF_HOME: ${{ github.workspace }}/.hf
+          TRANSFORMERS_CACHE: ${{ github.workspace }}/.hf/transformers
+          HF_HUB_DISABLE_TELEMETRY: "1"
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch
+          pip install --no-cache-dir code-bert-score transformers tokenizers
+          pip install --no-cache-dir "openai>=1.108.1" pyyaml
+
+      - name: Download smell report
+        uses: actions/download-artifact@v4
+        with:
+          name: smell-report
+
+      - name: Prepare refactoring branch
+        run: |
+          SMELL_UUID="${{ matrix.smell-uuid }}"
+          BRANCH_NAME="refactor/${SMELL_UUID}"
+          echo "Preparing branch $BRANCH_NAME"
+
+          # Publish the marker branch before proposal/correctness/PR creation. Do not move
+          # this later unless duplicate-smell filtering no longer relies on remote branches.
+          if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
+            git checkout "$BRANCH_NAME"
+          else
+            git checkout -b "$BRANCH_NAME"
+          fi
+
+          if git ls-remote --exit-code origin "$BRANCH_NAME" >/dev/null 2>&1; then
+            echo "Remote branch $BRANCH_NAME already exists"
+            git fetch origin "$BRANCH_NAME":"$BRANCH_NAME"
+          else
+            echo "Publishing $BRANCH_NAME to origin"
+            git push --set-upstream origin "$BRANCH_NAME"
+          fi
+
+          echo "BRANCH_NAME=$BRANCH_NAME" >> "$GITHUB_ENV"
+
+      - name: Generate refactoring proposal
+        id: generate-proposal
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SMELL_UUID: ${{ matrix.smell-uuid }}
+          REFACTORER_TOOL_PATH: ${{ github.workspace }}/${{ env.REFACTORER_TOOL_CHECKOUT_PATH }}
+        run: |
+          cd "$TARGET_DIR"
+          PYTHONPATH="$REFACTORER_TOOL_PATH" python -P -m scripts.generate_proposal \
+            --smell-uuid "$SMELL_UUID" \
+            --report-file "$GITHUB_WORKSPACE/filtered_report.csv"
+
+      - name: Apply refactoring changes
+        id: apply-refactoring
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SMELL_UUID: ${{ matrix.smell-uuid }}
+          REFACTORER_TOOL_PATH: ${{ github.workspace }}/${{ env.REFACTORER_TOOL_CHECKOUT_PATH }}
+        run: |
+          cd "$TARGET_DIR"
+          PYTHONPATH="$REFACTORER_TOOL_PATH" python -P -m scripts.apply_refactoring \
+            --smell-uuid "$SMELL_UUID" \
+            --proposal-file proposal.json \
+            --modules-file modules.json
+
+      - name: Determine pull request paths
+        env:
+          REFACTORER_TOOL_PATH: ${{ github.workspace }}/${{ env.REFACTORER_TOOL_CHECKOUT_PATH }}
+        run: |
+          # Build PR paths only from refactored_files.json. Do not stage workspace globs;
+          # the workspace also contains workflow artifacts and the Refactorer checkout.
+          PR_PATHS_FILE="$RUNNER_TEMP/pr-paths.txt"
+          PR_STATUS_FILE="$RUNNER_TEMP/pr-status.txt"
+          PR_REFACTORED_FILES_FILE="$RUNNER_TEMP/pr-refactored-files.json"
+          PYTHONPATH="$REFACTORER_TOOL_PATH" python -P -m scripts.prepare_pr_payload \
+            --refactored-files "$TARGET_DIR/refactored_files.json" \
+            --target-dir "$TARGET_DIR" \
+            --tool-checkout-path "$REFACTORER_TOOL_CHECKOUT_PATH" \
+            --paths-output "$PR_PATHS_FILE" \
+            --status-output "$PR_STATUS_FILE" \
+            --filtered-refactored-files-output "$PR_REFACTORED_FILES_FILE"
+
+          echo "PR_REFACTORED_FILES_FILE=$PR_REFACTORED_FILES_FILE" >> "$GITHUB_ENV"
+
+          {
+            echo "PR_PATHS<<END_OF_PR_PATHS_4f1a2c"
+            cat "$PR_PATHS_FILE"
+            echo "END_OF_PR_PATHS_4f1a2c"
+          } >> "$GITHUB_ENV"
+
+          if [ "$(cat "$PR_STATUS_FILE")" = "true" ]; then
+            echo "Detected refactored repository changes to include in the pull request"
+            echo "CHANGES_MADE=true" >> "$GITHUB_ENV"
+          else
+            # Keep the marker branch when no repository diff remains. It records that this
+            # smell was processed, even though downstream PR creation should be skipped.
+            echo "No refactored repository changes to include"
+            echo "CHANGES_MADE=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run correctness filter
+        if: env.CHANGES_MADE == 'true'
+        id: correctness
+        env:
+          HF_HOME: ${{ github.workspace }}/.hf
+          TRANSFORMERS_CACHE: ${{ github.workspace }}/.hf/transformers
+          HF_HUB_DISABLE_TELEMETRY: "1"
+          REFACTORER_TOOL_PATH: ${{ github.workspace }}/${{ env.REFACTORER_TOOL_CHECKOUT_PATH }}
+        run: |
+          # Run correctness after publishing the marker branch. Failed refactorings should
+          # block PR creation but still prevent this smell from being reprocessed.
+          cd "$TARGET_DIR"
+          PYTHONPATH="$REFACTORER_TOOL_PATH" python -P -m scripts.correctness_filter && exit_code=0 || exit_code=$?
+
+          echo "CORRECTNESS_EXIT_CODE=$exit_code" >> "$GITHUB_ENV"
+          if [ "$exit_code" -ne 0 ]; then
+            echo "::warning::Correctness filter rejected the refactoring (exit code: $exit_code)"
+          fi
+
+      - name: Generate PR description
+        if: env.CHANGES_MADE == 'true'
+        env:
+          SMELL_UUID: ${{ matrix.smell-uuid }}
+          REFACTORER_TOOL_PATH: ${{ github.workspace }}/${{ env.REFACTORER_TOOL_CHECKOUT_PATH }}
+        run: |
+          # Render validation results after correctness, including rejected candidates
+          # for diagnostics. Use only the filtered files that would be committed.
+          PYTHONPATH="$REFACTORER_TOOL_PATH" python -P -m scripts.generate_pr_description \
+            --smell-uuid "$SMELL_UUID" \
+            --report-file filtered_report.csv \
+            --proposal-file "$TARGET_DIR/proposal.json" \
+            --refactored-files "$PR_REFACTORED_FILES_FILE" \
+            --validation-assessment "$TARGET_DIR/validation_assessment.json" \
+            --output-title "$TARGET_DIR/pr_title.txt" \
+            --output-body "$TARGET_DIR/pr_body.txt"
+
+      - name: Upload refactoring artifacts
+        # Preserve artifacts and logs after failures.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refactoring-artifacts-${{ matrix.smell-uuid }}
+          path: |
+            ${{ env.TARGET_DIR }}/prompt.txt
+            ${{ env.TARGET_DIR }}/proposal.json
+            ${{ env.TARGET_DIR }}/modules.json
+            ${{ env.TARGET_DIR }}/refactored_files.json
+            ${{ env.TARGET_DIR }}/validation_assessment.json
+            ${{ env.TARGET_DIR }}/pr_title.txt
+            ${{ env.TARGET_DIR }}/pr_body.txt
+            ${{ env.TARGET_DIR }}/debug.log
+          retention-days: ${{ inputs.artifact_retention_days }}
+          if-no-files-found: ignore
+
+      - name: Create Pull Request
+        id: create-pr
+        if: env.CHANGES_MADE == 'true' && env.CORRECTNESS_EXIT_CODE == '0'
+        uses: peter-evans/create-pull-request@v4
+        with:
+          token: ${{ github.token }}
+          commit-message: ${{ env.PR_TITLE }}
+          branch: ${{ env.BRANCH_NAME }}
+          # Keep add-paths restricted to the prepared caller-repo paths. Do not switch to
+          # broad globs or the PR may include workflow artifacts or the Refactorer checkout.
+          add-paths: ${{ env.PR_PATHS }}
+          author: Refactorer Bot <refactorer-bot@noreply.github.com>
+          committer: Refactorer Bot <refactorer-bot@noreply.github.com>
+          base: ${{ env.BASE_BRANCH }}
+          title: ${{ env.PR_TITLE }}
+          body: ${{ env.PR_BODY }}
+          labels: ${{ steps.correctness.outputs.pr_labels }}
+          draft: false
+
+      - name: Summarize refactoring outcome
+        if: always()
+        env:
+          SMELL_UUID: ${{ matrix.smell-uuid }}
+          PROPOSAL_OUTCOME: ${{ steps.generate-proposal.outcome }}
+          APPLICATION_OUTCOME: ${{ steps.apply-refactoring.outcome }}
+          JOB_STATUS: ${{ job.status }}
+          PR_NUMBER: ${{ steps.create-pr.outputs.pull-request-number }}
+        run: |
+          if [ "$PROPOSAL_OUTCOME" = "failure" ] || [ "$APPLICATION_OUTCOME" = "failure" ]; then
+            OUTCOME="generation failed"
+          elif [ "$JOB_STATUS" != "success" ]; then
+            OUTCOME="job error"
+          elif [ "$CHANGES_MADE" = "false" ]; then
+            OUTCOME="no change"
+          elif [ -n "$CORRECTNESS_EXIT_CODE" ] && [ "$CORRECTNESS_EXIT_CODE" != "0" ]; then
+            OUTCOME="rejected"
+          elif [ -n "$PR_NUMBER" ]; then
+            OUTCOME="PR created"
+          else
+            OUTCOME="job error"
+          fi
+
+          echo "- $SMELL_UUID: $OUTCOME" >> "$GITHUB_STEP_SUMMARY"

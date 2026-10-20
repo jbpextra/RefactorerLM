@@ -1,0 +1,7 @@
+smell_filter:
+  filter_enabled: true
+  include_names:
+    - Cyclic Dependency
+  include_severities:
+    - critical
+    - major

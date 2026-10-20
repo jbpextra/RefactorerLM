@@ -1,0 +1,178 @@
+{
+  "changed_calculation": {
+    "candidate_sources": {
+      "service.py": "import shared_rules\n\n\ndef summarize_request(items, request_id):\n    if not request_id:\n        raise ValueError(\"request_id is required\")\n    materialized = list(items)\n    result = shared_rules.summarize(materialized)\n    return {\"request_id\": request_id, \"result\": result}\n",
+      "shared_rules.py": "def summarize(items):\n    normalized = []\n    for item in items:\n        if isinstance(item, bool):\n            raise TypeError(\"boolean items are not amounts\")\n        if not isinstance(item, (int, float)):\n            raise TypeError(\"amounts must be numeric\")\n        if item < 0:\n            raise ValueError(\"amounts must be nonnegative\")\n        normalized.append(float(item))\n    count = len(normalized)\n    total = sum(normalized)\n    if count == 0:\n        return {\n            \"count\": 0,\n            \"total\": 0.0,\n            \"average\": 0.0,\n            \"minimum\": None,\n            \"maximum\": None,\n            \"spread\": 0.0,\n        }\n    minimum = min(normalized)\n    maximum = max(normalized)\n    average = total * count\n    spread = maximum - minimum\n    return {\n        \"count\": count,\n        \"total\": total,\n        \"average\": average,\n        \"minimum\": minimum,\n        \"maximum\": maximum,\n        \"spread\": spread,\n    }\n",
+      "unrelated_report.py": "import shared_rules\n\n\ndef unrelated_report():\n    return shared_rules.summarize([999])\n"
+    },
+    "changed_paths": [
+      "legacy_rules.py",
+      "service.py",
+      "shared_rules.py"
+    ],
+    "modules": {
+      "legacy_rules.py": "def summarize(items):\n    normalized = []\n    for item in items:\n        if isinstance(item, bool):\n            raise TypeError(\"boolean items are not amounts\")\n        if not isinstance(item, (int, float)):\n            raise TypeError(\"amounts must be numeric\")\n        if item < 0:\n            raise ValueError(\"amounts must be nonnegative\")\n        normalized.append(float(item))\n    count = len(normalized)\n    total = sum(normalized)\n    if count == 0:\n        return {\n            \"count\": 0,\n            \"total\": 0.0,\n            \"average\": 0.0,\n            \"minimum\": None,\n            \"maximum\": None,\n            \"spread\": 0.0,\n        }\n    minimum = min(normalized)\n    maximum = max(normalized)\n    average = total / count\n    spread = maximum - minimum\n    return {\n        \"count\": count,\n        \"total\": total,\n        \"average\": average,\n        \"minimum\": minimum,\n        \"maximum\": maximum,\n        \"spread\": spread,\n    }\n",
+      "service.py": "import legacy_rules\n\n\ndef summarize_request(items, request_id):\n    if not request_id:\n        raise ValueError(\"request_id is required\")\n    materialized = list(items)\n    result = legacy_rules.summarize(materialized)\n    return {\"request_id\": request_id, \"result\": result}\n",
+      "shared_rules.py": "def summarize(items):\n    normalized = []\n    for item in items:\n        if isinstance(item, bool):\n            raise TypeError(\"boolean items are not amounts\")\n        if not isinstance(item, (int, float)):\n            raise TypeError(\"amounts must be numeric\")\n        if item < 0:\n            raise ValueError(\"amounts must be nonnegative\")\n        normalized.append(float(item))\n    count = len(normalized)\n    total = sum(normalized)\n    if count == 0:\n        return {\n            \"count\": 0,\n            \"total\": 0.0,\n            \"average\": 0.0,\n            \"minimum\": None,\n            \"maximum\": None,\n            \"spread\": 0.0,\n        }\n    minimum = min(normalized)\n    maximum = max(normalized)\n    average = total / count\n    spread = maximum - minimum\n    return {\n        \"count\": count,\n        \"total\": total,\n        \"average\": average,\n        \"minimum\": minimum,\n        \"maximum\": maximum,\n        \"spread\": spread,\n    }\n",
+      "unrelated_report.py": "import shared_rules\n\n\ndef unrelated_report():\n    return shared_rules.summarize([999])\n"
+    },
+    "refactored": [
+      {
+        "operation": "delete",
+        "path": "legacy_rules.py"
+      },
+      {
+        "content": "import shared_rules\n\n\ndef summarize_request(items, request_id):\n    if not request_id:\n        raise ValueError(\"request_id is required\")\n    materialized = list(items)\n    result = shared_rules.summarize(materialized)\n    return {\"request_id\": request_id, \"result\": result}\n",
+        "operation": "modify",
+        "path": "service.py"
+      },
+      {
+        "content": "def summarize(items):\n    normalized = []\n    for item in items:\n        if isinstance(item, bool):\n            raise TypeError(\"boolean items are not amounts\")\n        if not isinstance(item, (int, float)):\n            raise TypeError(\"amounts must be numeric\")\n        if item < 0:\n            raise ValueError(\"amounts must be nonnegative\")\n        normalized.append(float(item))\n    count = len(normalized)\n    total = sum(normalized)\n    if count == 0:\n        return {\n            \"count\": 0,\n            \"total\": 0.0,\n            \"average\": 0.0,\n            \"minimum\": None,\n            \"maximum\": None,\n            \"spread\": 0.0,\n        }\n    minimum = min(normalized)\n    maximum = max(normalized)\n    average = total * count\n    spread = maximum - minimum\n    return {\n        \"count\": count,\n        \"total\": total,\n        \"average\": average,\n        \"minimum\": minimum,\n        \"maximum\": maximum,\n        \"spread\": spread,\n    }\n",
+        "operation": "modify",
+        "path": "shared_rules.py"
+      }
+    ],
+    "smell_details": {
+      "File": "legacy_rules.py",
+      "Name": "Potential Redundant Abstractions",
+      "Related Participants": "[{\"file_path\": \"legacy_rules.py\"}, {\"file_path\": \"shared_rules.py\"}]"
+    }
+  },
+  "changed_exception": {
+    "candidate_sources": {
+      "service.py": "import shared_rules\n\n\ndef summarize_request(items, request_id):\n    if not request_id:\n        raise ValueError(\"request_id is required\")\n    materialized = list(items)\n    result = shared_rules.summarize(materialized)\n    return {\"request_id\": request_id, \"result\": result}\n",
+      "shared_rules.py": "def summarize(items):\n    normalized = []\n    for item in items:\n        if isinstance(item, bool):\n            raise TypeError(\"boolean items are not amounts\")\n        if not isinstance(item, (int, float)):\n            raise TypeError(\"amounts must be numeric\")\n        if item < 0:\n            return {\"error\": \"negative amount\"}\n        normalized.append(float(item))\n    count = len(normalized)\n    total = sum(normalized)\n    if count == 0:\n        return {\n            \"count\": 0,\n            \"total\": 0.0,\n            \"average\": 0.0,\n            \"minimum\": None,\n            \"maximum\": None,\n            \"spread\": 0.0,\n        }\n    minimum = min(normalized)\n    maximum = max(normalized)\n    average = total / count\n    spread = maximum - minimum\n    return {\n        \"count\": count,\n        \"total\": total,\n        \"average\": average,\n        \"minimum\": minimum,\n        \"maximum\": maximum,\n        \"spread\": spread,\n    }\n",
+      "unrelated_report.py": "import shared_rules\n\n\ndef unrelated_report():\n    return shared_rules.summarize([999])\n"
+    },
+    "changed_paths": [
+      "legacy_rules.py",
+      "service.py",
+      "shared_rules.py"
+    ],
+    "modules": {
+      "legacy_rules.py": "def summarize(items):\n    normalized = []\n    for item in items:\n        if isinstance(item, bool):\n            raise TypeError(\"boolean items are not amounts\")\n        if not isinstance(item, (int, float)):\n            raise TypeError(\"amounts must be numeric\")\n        if item < 0:\n            raise ValueError(\"amounts must be nonnegative\")\n        normalized.append(float(item))\n    count = len(normalized)\n    total = sum(normalized)\n    if count == 0:\n        return {\n            \"count\": 0,\n            \"total\": 0.0,\n            \"average\": 0.0,\n            \"minimum\": None,\n            \"maximum\": None,\n            \"spread\": 0.0,\n        }\n    minimum = min(normalized)\n    maximum = max(normalized)\n    average = total / count\n    spread = maximum - minimum\n    return {\n        \"count\": count,\n        \"total\": total,\n        \"average\": average,\n        \"minimum\": minimum,\n        \"maximum\": maximum,\n        \"spread\": spread,\n    }\n",
+      "service.py": "import legacy_rules\n\n\ndef summarize_request(items, request_id):\n    if not request_id:\n        raise ValueError(\"request_id is required\")\n    materialized = list(items)\n    result = legacy_rules.summarize(materialized)\n    return {\"request_id\": request_id, \"result\": result}\n",
+      "shared_rules.py": "def summarize(items):\n    normalized = []\n    for item in items:\n        if isinstance(item, bool):\n            raise TypeError(\"boolean items are not amounts\")\n        if not isinstance(item, (int, float)):\n            raise TypeError(\"amounts must be numeric\")\n        if item < 0:\n            raise ValueError(\"amounts must be nonnegative\")\n        normalized.append(float(item))\n    count = len(normalized)\n    total = sum(normalized)\n    if count == 0:\n        return {\n            \"count\": 0,\n            \"total\": 0.0,\n            \"average\": 0.0,\n            \"minimum\": None,\n            \"maximum\": None,\n            \"spread\": 0.0,\n        }\n    minimum = min(normalized)\n    maximum = max(normalized)\n    average = total / count\n    spread = maximum - minimum\n    return {\n        \"count\": count,\n        \"total\": total,\n        \"average\": average,\n        \"minimum\": minimum,\n        \"maximum\": maximum,\n        \"spread\": spread,\n    }\n",
+      "unrelated_report.py": "import shared_rules\n\n\ndef unrelated_report():\n    return shared_rules.summarize([999])\n"
+    },
+    "refactored": [
+      {
+        "operation": "delete",
+        "path": "legacy_rules.py"
+      },
+      {
+        "content": "import shared_rules\n\n\ndef summarize_request(items, request_id):\n    if not request_id:\n        raise ValueError(\"request_id is required\")\n    materialized = list(items)\n    result = shared_rules.summarize(materialized)\n    return {\"request_id\": request_id, \"result\": result}\n",
+        "operation": "modify",
+        "path": "service.py"
+      },
+      {
+        "content": "def summarize(items):\n    normalized = []\n    for item in items:\n        if isinstance(item, bool):\n            raise TypeError(\"boolean items are not amounts\")\n        if not isinstance(item, (int, float)):\n            raise TypeError(\"amounts must be numeric\")\n        if item < 0:\n            return {\"error\": \"negative amount\"}\n        normalized.append(float(item))\n    count = len(normalized)\n    total = sum(normalized)\n    if count == 0:\n        return {\n            \"count\": 0,\n            \"total\": 0.0,\n            \"average\": 0.0,\n            \"minimum\": None,\n            \"maximum\": None,\n            \"spread\": 0.0,\n        }\n    minimum = min(normalized)\n    maximum = max(normalized)\n    average = total / count\n    spread = maximum - minimum\n    return {\n        \"count\": count,\n        \"total\": total,\n        \"average\": average,\n        \"minimum\": minimum,\n        \"maximum\": maximum,\n        \"spread\": spread,\n    }\n",
+        "operation": "modify",
+        "path": "shared_rules.py"
+      }
+    ],
+    "smell_details": {
+      "File": "legacy_rules.py",
+      "Name": "Potential Redundant Abstractions",
+      "Related Participants": "[{\"file_path\": \"legacy_rules.py\"}, {\"file_path\": \"shared_rules.py\"}]"
+    }
+  },
+  "consolidation": {
+    "candidate_sources": {
+      "service.py": "import shared_rules\n\n\ndef summarize_request(items, request_id):\n    if not request_id:\n        raise ValueError(\"request_id is required\")\n    materialized = list(items)\n    result = shared_rules.summarize(materialized)\n    return {\"request_id\": request_id, \"result\": result}\n",
+      "shared_rules.py": "def summarize(items):\n    normalized = []\n    for item in items:\n        if isinstance(item, bool):\n            raise TypeError(\"boolean items are not amounts\")\n        if not isinstance(item, (int, float)):\n            raise TypeError(\"amounts must be numeric\")\n        if item < 0:\n            raise ValueError(\"amounts must be nonnegative\")\n        normalized.append(float(item))\n    count = len(normalized)\n    total = sum(normalized)\n    if count == 0:\n        return {\n            \"count\": 0,\n            \"total\": 0.0,\n            \"average\": 0.0,\n            \"minimum\": None,\n            \"maximum\": None,\n            \"spread\": 0.0,\n        }\n    minimum = min(normalized)\n    maximum = max(normalized)\n    average = total / count\n    spread = maximum - minimum\n    return {\n        \"count\": count,\n        \"total\": total,\n        \"average\": average,\n        \"minimum\": minimum,\n        \"maximum\": maximum,\n        \"spread\": spread,\n    }\n",
+      "unrelated_report.py": "import shared_rules\n\n\ndef unrelated_report():\n    return shared_rules.summarize([999])\n"
+    },
+    "changed_paths": [
+      "legacy_rules.py",
+      "service.py"
+    ],
+    "modules": {
+      "legacy_rules.py": "def summarize(items):\n    normalized = []\n    for item in items:\n        if isinstance(item, bool):\n            raise TypeError(\"boolean items are not amounts\")\n        if not isinstance(item, (int, float)):\n            raise TypeError(\"amounts must be numeric\")\n        if item < 0:\n            raise ValueError(\"amounts must be nonnegative\")\n        normalized.append(float(item))\n    count = len(normalized)\n    total = sum(normalized)\n    if count == 0:\n        return {\n            \"count\": 0,\n            \"total\": 0.0,\n            \"average\": 0.0,\n            \"minimum\": None,\n            \"maximum\": None,\n            \"spread\": 0.0,\n        }\n    minimum = min(normalized)\n    maximum = max(normalized)\n    average = total / count\n    spread = maximum - minimum\n    return {\n        \"count\": count,\n        \"total\": total,\n        \"average\": average,\n        \"minimum\": minimum,\n        \"maximum\": maximum,\n        \"spread\": spread,\n    }\n",
+      "service.py": "import legacy_rules\n\n\ndef summarize_request(items, request_id):\n    if not request_id:\n        raise ValueError(\"request_id is required\")\n    materialized = list(items)\n    result = legacy_rules.summarize(materialized)\n    return {\"request_id\": request_id, \"result\": result}\n",
+      "shared_rules.py": "def summarize(items):\n    normalized = []\n    for item in items:\n        if isinstance(item, bool):\n            raise TypeError(\"boolean items are not amounts\")\n        if not isinstance(item, (int, float)):\n            raise TypeError(\"amounts must be numeric\")\n        if item < 0:\n            raise ValueError(\"amounts must be nonnegative\")\n        normalized.append(float(item))\n    count = len(normalized)\n    total = sum(normalized)\n    if count == 0:\n        return {\n            \"count\": 0,\n            \"total\": 0.0,\n            \"average\": 0.0,\n            \"minimum\": None,\n            \"maximum\": None,\n            \"spread\": 0.0,\n        }\n    minimum = min(normalized)\n    maximum = max(normalized)\n    average = total / count\n    spread = maximum - minimum\n    return {\n        \"count\": count,\n        \"total\": total,\n        \"average\": average,\n        \"minimum\": minimum,\n        \"maximum\": maximum,\n        \"spread\": spread,\n    }\n",
+      "unrelated_report.py": "import shared_rules\n\n\ndef unrelated_report():\n    return shared_rules.summarize([999])\n"
+    },
+    "refactored": [
+      {
+        "operation": "delete",
+        "path": "legacy_rules.py"
+      },
+      {
+        "content": "import shared_rules\n\n\ndef summarize_request(items, request_id):\n    if not request_id:\n        raise ValueError(\"request_id is required\")\n    materialized = list(items)\n    result = shared_rules.summarize(materialized)\n    return {\"request_id\": request_id, \"result\": result}\n",
+        "operation": "modify",
+        "path": "service.py"
+      }
+    ],
+    "smell_details": {
+      "File": "legacy_rules.py",
+      "Name": "Potential Redundant Abstractions",
+      "Related Participants": "[{\"file_path\": \"legacy_rules.py\"}, {\"file_path\": \"shared_rules.py\"}]"
+    }
+  },
+  "extraction": {
+    "candidate_sources": {
+      "helpers.py": "def summarize(items):\n    normalized = []\n    for item in items:\n        if isinstance(item, bool):\n            raise TypeError(\"boolean items are not amounts\")\n        if not isinstance(item, (int, float)):\n            raise TypeError(\"amounts must be numeric\")\n        if item < 0:\n            raise ValueError(\"amounts must be nonnegative\")\n        normalized.append(float(item))\n    count = len(normalized)\n    total = sum(normalized)\n    if count == 0:\n        return {\n            \"count\": 0,\n            \"total\": 0.0,\n            \"average\": 0.0,\n            \"minimum\": None,\n            \"maximum\": None,\n            \"spread\": 0.0,\n        }\n    minimum = min(normalized)\n    maximum = max(normalized)\n    average = total / count\n    spread = maximum - minimum\n    return {\n        \"count\": count,\n        \"total\": total,\n        \"average\": average,\n        \"minimum\": minimum,\n        \"maximum\": maximum,\n        \"spread\": spread,\n    }\n",
+      "service.py": "import helpers\n\n\ndef summarize_request(items, request_id):\n    if not request_id:\n        raise ValueError(\"request_id is required\")\n    materialized = list(items)\n    result = helpers.summarize(materialized)\n    return {\"request_id\": request_id, \"result\": result}\n",
+      "unrelated_report.py": "import service\n\n\ndef unrelated_report():\n    return service.summarize_request([999], 'unrelated')\n"
+    },
+    "changed_paths": [
+      "helpers.py",
+      "service.py"
+    ],
+    "modules": {
+      "service.py": "def summarize(items):\n    normalized = []\n    for item in items:\n        if isinstance(item, bool):\n            raise TypeError(\"boolean items are not amounts\")\n        if not isinstance(item, (int, float)):\n            raise TypeError(\"amounts must be numeric\")\n        if item < 0:\n            raise ValueError(\"amounts must be nonnegative\")\n        normalized.append(float(item))\n    count = len(normalized)\n    total = sum(normalized)\n    if count == 0:\n        return {\n            \"count\": 0,\n            \"total\": 0.0,\n            \"average\": 0.0,\n            \"minimum\": None,\n            \"maximum\": None,\n            \"spread\": 0.0,\n        }\n    minimum = min(normalized)\n    maximum = max(normalized)\n    average = total / count\n    spread = maximum - minimum\n    return {\n        \"count\": count,\n        \"total\": total,\n        \"average\": average,\n        \"minimum\": minimum,\n        \"maximum\": maximum,\n        \"spread\": spread,\n    }\n\n\ndef summarize_request(items, request_id):\n    if not request_id:\n        raise ValueError(\"request_id is required\")\n    materialized = list(items)\n    result = summarize(materialized)\n    return {\"request_id\": request_id, \"result\": result}\n",
+      "unrelated_report.py": "import service\n\n\ndef unrelated_report():\n    return service.summarize_request([999], 'unrelated')\n"
+    },
+    "refactored": [
+      {
+        "content": "def summarize(items):\n    normalized = []\n    for item in items:\n        if isinstance(item, bool):\n            raise TypeError(\"boolean items are not amounts\")\n        if not isinstance(item, (int, float)):\n            raise TypeError(\"amounts must be numeric\")\n        if item < 0:\n            raise ValueError(\"amounts must be nonnegative\")\n        normalized.append(float(item))\n    count = len(normalized)\n    total = sum(normalized)\n    if count == 0:\n        return {\n            \"count\": 0,\n            \"total\": 0.0,\n            \"average\": 0.0,\n            \"minimum\": None,\n            \"maximum\": None,\n            \"spread\": 0.0,\n        }\n    minimum = min(normalized)\n    maximum = max(normalized)\n    average = total / count\n    spread = maximum - minimum\n    return {\n        \"count\": count,\n        \"total\": total,\n        \"average\": average,\n        \"minimum\": minimum,\n        \"maximum\": maximum,\n        \"spread\": spread,\n    }\n",
+        "operation": "create",
+        "path": "helpers.py"
+      },
+      {
+        "content": "import helpers\n\n\ndef summarize_request(items, request_id):\n    if not request_id:\n        raise ValueError(\"request_id is required\")\n    materialized = list(items)\n    result = helpers.summarize(materialized)\n    return {\"request_id\": request_id, \"result\": result}\n",
+        "operation": "modify",
+        "path": "service.py"
+      }
+    ],
+    "smell_details": {
+      "File": "service.py",
+      "Name": "Potential Redundant Abstractions",
+      "Related Participants": "[{\"file_path\": \"service.py\"}]"
+    }
+  },
+  "incorrect_redirection": {
+    "candidate_sources": {
+      "service.py": "import shared_rules\n\n\ndef summarize_request(items, request_id):\n    if not request_id:\n        raise ValueError(\"request_id is required\")\n    materialized = list(items)\n    result = shared_rules.summarize([])\n    return {\"request_id\": request_id, \"result\": result}\n",
+      "shared_rules.py": "def summarize(items):\n    normalized = []\n    for item in items:\n        if isinstance(item, bool):\n            raise TypeError(\"boolean items are not amounts\")\n        if not isinstance(item, (int, float)):\n            raise TypeError(\"amounts must be numeric\")\n        if item < 0:\n            raise ValueError(\"amounts must be nonnegative\")\n        normalized.append(float(item))\n    count = len(normalized)\n    total = sum(normalized)\n    if count == 0:\n        return {\n            \"count\": 0,\n            \"total\": 0.0,\n            \"average\": 0.0,\n            \"minimum\": None,\n            \"maximum\": None,\n            \"spread\": 0.0,\n        }\n    minimum = min(normalized)\n    maximum = max(normalized)\n    average = total / count\n    spread = maximum - minimum\n    return {\n        \"count\": count,\n        \"total\": total,\n        \"average\": average,\n        \"minimum\": minimum,\n        \"maximum\": maximum,\n        \"spread\": spread,\n    }\n",
+      "unrelated_report.py": "import shared_rules\n\n\ndef unrelated_report():\n    return shared_rules.summarize([999])\n"
+    },
+    "changed_paths": [
+      "legacy_rules.py",
+      "service.py"
+    ],
+    "modules": {
+      "legacy_rules.py": "def summarize(items):\n    normalized = []\n    for item in items:\n        if isinstance(item, bool):\n            raise TypeError(\"boolean items are not amounts\")\n        if not isinstance(item, (int, float)):\n            raise TypeError(\"amounts must be numeric\")\n        if item < 0:\n            raise ValueError(\"amounts must be nonnegative\")\n        normalized.append(float(item))\n    count = len(normalized)\n    total = sum(normalized)\n    if count == 0:\n        return {\n            \"count\": 0,\n            \"total\": 0.0,\n            \"average\": 0.0,\n            \"minimum\": None,\n            \"maximum\": None,\n            \"spread\": 0.0,\n        }\n    minimum = min(normalized)\n    maximum = max(normalized)\n    average = total / count\n    spread = maximum - minimum\n    return {\n        \"count\": count,\n        \"total\": total,\n        \"average\": average,\n        \"minimum\": minimum,\n        \"maximum\": maximum,\n        \"spread\": spread,\n    }\n",
+      "service.py": "import legacy_rules\n\n\ndef summarize_request(items, request_id):\n    if not request_id:\n        raise ValueError(\"request_id is required\")\n    materialized = list(items)\n    result = legacy_rules.summarize(materialized)\n    return {\"request_id\": request_id, \"result\": result}\n",
+      "shared_rules.py": "def summarize(items):\n    normalized = []\n    for item in items:\n        if isinstance(item, bool):\n            raise TypeError(\"boolean items are not amounts\")\n        if not isinstance(item, (int, float)):\n            raise TypeError(\"amounts must be numeric\")\n        if item < 0:\n            raise ValueError(\"amounts must be nonnegative\")\n        normalized.append(float(item))\n    count = len(normalized)\n    total = sum(normalized)\n    if count == 0:\n        return {\n            \"count\": 0,\n            \"total\": 0.0,\n            \"average\": 0.0,\n            \"minimum\": None,\n            \"maximum\": None,\n            \"spread\": 0.0,\n        }\n    minimum = min(normalized)\n    maximum = max(normalized)\n    average = total / count\n    spread = maximum - minimum\n    return {\n        \"count\": count,\n        \"total\": total,\n        \"average\": average,\n        \"minimum\": minimum,\n        \"maximum\": maximum,\n        \"spread\": spread,\n    }\n",
+      "unrelated_report.py": "import shared_rules\n\n\ndef unrelated_report():\n    return shared_rules.summarize([999])\n"
+    },
+    "refactored": [
+      {
+        "operation": "delete",
+        "path": "legacy_rules.py"
+      },
+      {
+        "content": "import shared_rules\n\n\ndef summarize_request(items, request_id):\n    if not request_id:\n        raise ValueError(\"request_id is required\")\n    materialized = list(items)\n    result = shared_rules.summarize([])\n    return {\"request_id\": request_id, \"result\": result}\n",
+        "operation": "modify",
+        "path": "service.py"
+      }
+    ],
+    "smell_details": {
+      "File": "legacy_rules.py",
+      "Name": "Potential Redundant Abstractions",
+      "Related Participants": "[{\"file_path\": \"legacy_rules.py\"}, {\"file_path\": \"shared_rules.py\"}]"
+    }
+  }
+}

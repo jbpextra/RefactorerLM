@@ -1,0 +1,25 @@
+# Refactorer configuration file
+
+# Analysis target directory (default: "." for repo root)
+# Set to subdirectory path for nested codebases (e.g., "src")
+target_directory: "."
+
+# Configuration for filtering code smells
+smell_filter:
+  # Enable or disable filtering
+  filter_enabled: true
+  
+  # List of smell names to include (empty list means include all)
+  # Examples: "Scattered Functionality", "God Class", etc.
+  include_names:
+    - "Cyclic Dependency"
+    - "Potential Redundant Abstractions"
+  
+  # List of severities to include (empty list means include all)
+  # Common severities: "High", "Medium", "Low"
+  include_severities:
+    - "High"
+    - "Medium"
+
+# Maximum number of proposals to generate (0 = no limit)
+max_proposal_limit: 5

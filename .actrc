@@ -1,0 +1,4 @@
+--artifact-server-path $PWD/.artifacts
+--artifact-server-addr $ACT_HOST_IP
+--artifact-server-port 34567
+--container-architecture linux/amd64
