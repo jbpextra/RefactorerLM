@@ -248,20 +248,20 @@ pull requests. Workflow artifacts are stored in `.artifacts`.
 
 ## Model settings
 
-The code defaults to `gpt-5.6-luna` for both planning and editing. You can configure
+The code defaults to `gpt-6-luna` for both planning and editing. You can configure
 each stage separately using environment variables locally or workflow inputs:
 
 | Environment variable | Workflow input | Local default | Workflow default |
 | --- | --- | --- | --- |
 | `OPENAI_BASE_URL` | `openai_base_url` | SDK default | `https://api.openai.com/v1` |
-| `REASONER_MODEL` | `reasoner_model` | `gpt-5.6-luna` | `gpt-5.6-luna` |
-| `CODER_MODEL` | `coder_model` | `gpt-5.6-luna` | `gpt-5.6-luna` |
+| `REASONER_MODEL` | `reasoner_model` | `gpt-6-luna` | `gpt-6-luna` |
+| `CODER_MODEL` | `coder_model` | `gpt-6-luna` | `gpt-6-luna` |
 | `REASONER_REASONING_EFFORT` | `reasoner_reasoning_effort` | `xhigh` | `xhigh` |
-| `CODER_REASONING_EFFORT` | `coder_reasoning_effort` | `low` | `none` |
+| `CODER_REASONING_EFFORT` | `coder_reasoning_effort` | `low` | `low` |
 
 The reasoning-effort settings control the effort requested from the model. Empty
-or unset model and effort variables use the local defaults; explicitly setting
-the workflow's `coder_reasoning_effort` to `""` therefore selects `low`.
+or unset model and effort variables use the local defaults, including `low` for
+the coder.
 
 Custom API endpoints must support the Responses API, JSON schema output, and
 function calling used by [scripts/llm_clients.py](scripts/llm_clients.py). Use a

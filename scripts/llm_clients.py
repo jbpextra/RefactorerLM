@@ -6,8 +6,8 @@ from typing import Any, Dict, List
 
 # ===== Configuration =====
 # Defaults used when the corresponding environment variable is unset or empty.
-REASONER_MODEL = "gpt-5.6-luna"   # reasoning‑oriented model
-CODER_MODEL    = "gpt-5.6-luna"   # code‑generation model
+REASONER_MODEL = "gpt-6-luna"   # reasoning‑oriented model
+CODER_MODEL    = "gpt-6-luna"   # code‑generation model
 
 # ===== Reasoner prompts =====
 # Each prompt lists explicit refactoring options. The model MUST output valid JSON only

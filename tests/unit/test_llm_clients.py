@@ -135,7 +135,7 @@ def test_empty_environment_keeps_defaults(monkeypatch, install_response, stage):
     output = text_item("{}") if stage == "planner" else function_item('{"files": []}')
     requests = install_response(response_with([output]))
     call_stage(stage)
-    assert requests[0]["model"] == "gpt-5.6-luna"
+    assert requests[0]["model"] == "gpt-6-luna"
     assert requests[0]["reasoning"] == {
         "effort": "xhigh" if stage == "planner" else "low"
     }

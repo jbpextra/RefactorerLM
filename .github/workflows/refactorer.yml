@@ -53,12 +53,12 @@ on:
         type: string
         default: ""
       reasoner_model:
-        description: Model used to plan refactorings. Leave blank to use gpt-5.6-luna.
+        description: Model used to plan refactorings. Leave blank to use gpt-6-luna.
         required: false
         type: string
         default: ""
       coder_model:
-        description: Model used to apply refactorings. Leave blank to use gpt-5.6-luna.
+        description: Model used to apply refactorings. Leave blank to use gpt-6-luna.
         required: false
         type: string
         default: ""
@@ -68,10 +68,10 @@ on:
         type: string
         default: ""
       coder_reasoning_effort:
-        description: Reasoning effort used to apply refactorings. Defaults to none; set blank to use the Python fallback low.
+        description: Reasoning effort used to apply refactorings. Leave blank to use low.
         required: false
         type: string
-        default: "none"
+        default: "low"
     secrets:
       OPENAI_API_KEY:
         description: OpenAI API key used to generate and apply refactoring proposals. Add this secret in the caller repository with access to the configured OpenAI models.
@@ -137,12 +137,12 @@ on:
         type: string
         default: ""
       reasoner_model:
-        description: Model used to plan refactorings. Leave blank to use gpt-5.6-luna.
+        description: Model used to plan refactorings. Leave blank to use gpt-6-luna.
         required: false
         type: string
         default: ""
       coder_model:
-        description: Model used to apply refactorings. Leave blank to use gpt-5.6-luna.
+        description: Model used to apply refactorings. Leave blank to use gpt-6-luna.
         required: false
         type: string
         default: ""
@@ -152,10 +152,10 @@ on:
         type: string
         default: ""
       coder_reasoning_effort:
-        description: Reasoning effort used to apply refactorings. Defaults to none; set blank to use the Python fallback low.
+        description: Reasoning effort used to apply refactorings. Leave blank to use low.
         required: false
         type: string
-        default: "none"
+        default: "low"
 env:
   REFACTORER_REPOSITORY: jbpextra/RefactorerLM
   REFACTORER_TOOL_CHECKOUT_PATH: .refactorer-tool
