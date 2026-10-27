@@ -96,9 +96,20 @@ jobs:
 ```
 
 Planning and editing send source code to the configured model service and may
-incur API costs. The workflow installs Refactorer's dependencies, but currently
-does not install `pytest` or the target project's own dependencies. Enabling
-project tests therefore requires adapting the refactoring job to install them.
+incur API costs. The workflow installs Refactorer's dependencies. To install the
+caller project and its test dependencies in the same job, set
+`project_install_command`:
+
+```yaml
+    with:
+      project_install_command: python -m pip install -e ".[test]"
+```
+
+This command runs from the caller repository root before any refactoring attempt
+is created. An installation failure stops the job. The example installs a
+project's `test` extra; adapt it to the project's dependency setup, including
+`pytest`. Editable installation keeps imports pointed at the checkout as it is
+refactored. When the command is omitted, no project dependencies are installed.
 
 If the default GitHub token cannot read the Refactorer repository, also pass a
 `REFACTORER_REPOSITORY_TOKEN` secret with access to it.
@@ -120,6 +131,7 @@ Common workflow inputs:
 | Input | Purpose | Default |
 | --- | --- | --- |
 | `python_version` | Python version for the jobs | `3.13` |
+| `project_install_command` | Install the caller project and test dependencies from its repository root | Empty (no project installation) |
 | `config_file` | Selection configuration in the target repository | `refactor_configuration.yml` |
 | `target_directory` | Directory to analyze and edit | Configuration value, otherwise `.` |
 | `base_branch` | Branch the pull request targets | Repository's default branch |

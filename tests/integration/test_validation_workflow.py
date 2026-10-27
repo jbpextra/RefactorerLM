@@ -22,6 +22,104 @@ def refactoring_steps():
     return workflow["jobs"]["refactor-smells"]["steps"]
 
 
+def test_project_dependency_install_is_opt_in_and_precedes_attempt(refactoring_steps):
+    workflow = yaml.load(
+        WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader
+    )
+    for trigger in ("workflow_call", "workflow_dispatch"):
+        setting = workflow["on"][trigger]["inputs"]["project_install_command"]
+        assert setting["type"] == "string"
+        assert setting["required"] == "false"
+        assert setting["default"] == ""
+
+    names = [step["name"] for step in refactoring_steps]
+    steps = {step["name"]: step for step in refactoring_steps}
+    install = steps["Install project dependencies"]
+    assert install["if"] == "inputs.project_install_command != ''"
+    assert install["env"]["PROJECT_INSTALL_COMMAND"] == (
+        "${{ inputs.project_install_command }}"
+    )
+    assert install.get("working-directory", "${{ github.workspace }}") == (
+        "${{ github.workspace }}"
+    )
+    assert names.index("Install dependencies") < names.index(
+        "Install project dependencies"
+    ) < names.index("Prepare refactoring branch")
+    assert names.index("Prepare refactoring branch") < names.index(
+        "Generate refactoring proposal"
+    )
+
+
+def test_project_dependency_command_runs_at_root_with_quoted_multiline_content(
+    tmp_path, refactoring_steps
+):
+    install = next(
+        step
+        for step in refactoring_steps
+        if step["name"] == "Install project dependencies"
+    )
+    (tmp_path / "nested project").mkdir()
+    command = (
+        "pwd > 'install directory.txt'\n"
+        "printf '%s\\n' '.[test]' 'quoted \"value\" $HOME $(touch injected)' "
+        "> 'installed arguments.txt'\n"
+    )
+    result = subprocess.run(
+        ["bash", "-e", "-o", "pipefail", "-c", install["run"]],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "GITHUB_WORKSPACE": str(tmp_path),
+            "TARGET_DIR": "nested project",
+            "PROJECT_INSTALL_COMMAND": command,
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert Path((tmp_path / "install directory.txt").read_text().strip()) == tmp_path
+    assert (tmp_path / "installed arguments.txt").read_text() == (
+        '.[test]\nquoted "value" $HOME $(touch injected)\n'
+    )
+    assert not (tmp_path / "injected").exists()
+    assert not list((tmp_path / "nested project").iterdir())
+
+
+@pytest.mark.parametrize(
+    ("command", "exit_code"),
+    [
+        ("exit 17", 17),
+        ("false\nprintf unexpected > installation-continued", 1),
+        ("false | cat\nprintf unexpected > installation-continued", 1),
+    ],
+)
+def test_project_dependency_failure_stops_before_generation(
+    tmp_path, refactoring_steps, command, exit_code
+):
+    install = next(
+        step
+        for step in refactoring_steps
+        if step["name"] == "Install project dependencies"
+    )
+    result = subprocess.run(
+        [
+            "bash",
+            "-e",
+            "-o",
+            "pipefail",
+            "-c",
+            install["run"] + "\nprintf unexpected > generation-started\n",
+        ],
+        cwd=tmp_path,
+        env={**os.environ, "PROJECT_INSTALL_COMMAND": command},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == exit_code, result.stderr
+    assert not (tmp_path / "installation-continued").exists()
+    assert not (tmp_path / "generation-started").exists()
+
+
 def test_validation_assessment_is_rendered_and_retained_before_publication(
     refactoring_steps,
 ):

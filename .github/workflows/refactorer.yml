@@ -17,6 +17,11 @@ on:
         required: false
         type: string
         default: "3.13"
+      project_install_command:
+        description: Optional shell command to install the caller project and test dependencies from its repository root before refactoring. For projects with a test extra, use python -m pip install -e ".[test]".
+        required: false
+        type: string
+        default: ""
       config_file:
         description: Path to the Refactorer configuration file in the caller repository. Leave unset to use `refactor_configuration.yml`; set this when the caller stores the config elsewhere.
         required: false
@@ -96,6 +101,11 @@ on:
         required: false
         type: string
         default: "3.13"
+      project_install_command:
+        description: Optional shell command to install the project and test dependencies from the repository root before refactoring. For projects with a test extra, use python -m pip install -e ".[test]".
+        required: false
+        type: string
+        default: ""
       config_file:
         description: Path to the Refactorer configuration file. Leave unset to use `refactor_configuration.yml`; set this when the config file is stored elsewhere.
         required: false
@@ -459,6 +469,14 @@ jobs:
           pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch
           pip install --no-cache-dir code-bert-score transformers tokenizers
           pip install --no-cache-dir "openai>=1.108.1" pyyaml
+
+      - name: Install project dependencies
+        if: inputs.project_install_command != ''
+        shell: bash
+        env:
+          PROJECT_INSTALL_COMMAND: ${{ inputs.project_install_command }}
+        run: |
+          bash -e -o pipefail -c "$PROJECT_INSTALL_COMMAND"
 
       - name: Download smell report
         uses: actions/download-artifact@v4
