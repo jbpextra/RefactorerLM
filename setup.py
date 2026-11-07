@@ -2,12 +2,12 @@ from setuptools import setup, find_packages
 
 setup(
     name="refactorer-tool",
-    version="0.1.0",
+    version="1.0.0",
     description="Automated refactoring tool to address architectural smells",
     python_requires=">=3.11",
     packages=find_packages(),
     install_requires=[
-      "code-quality-analyzer @ git+https://github.com/jbpextra/python_smells_detector.git@add-participant-to-architectural-smells#egg=code-quality-analyzer",
+      "code-quality-analyzer @ git+https://github.com/jbpextra/python_smells_detector.git@fd75df397a70643ffab5dd91788c9721dae48157#egg=code-quality-analyzer",
       "openai>=1.108.1",
       "PyYAML>=6.0",
       "code-bert-score",

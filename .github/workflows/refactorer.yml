@@ -7,6 +7,11 @@ permissions:
 on:
   workflow_call:
     inputs:
+      refactorer_repository:
+        description: Repository containing Refactorer's helper scripts. Defaults to the public release repository; private callers must select their private tool repository explicitly.
+        required: false
+        type: string
+        default: "jbpextra/RefactorerLM"
       refactorer_ref:
         description: Refactorer branch, tag, or SHA used for internal script checkouts. Leave unset for `main`; otherwise set this to the same ref used in the workflow `uses:` line.
         required: false
@@ -91,8 +96,13 @@ on:
         value: ${{ jobs.detect-smells.outputs.target-directory }}
   workflow_dispatch:
     inputs:
+      refactorer_repository:
+        description: Repository containing Refactorer's helper scripts. Use self to test this repository at the selected workflow commit, or enter an owner/repository explicitly.
+        required: false
+        type: string
+        default: "self"
       refactorer_ref:
-        description: Refactorer branch, tag, or SHA used for internal script checkouts. Leave blank to use the selected workflow branch or commit.
+        description: Refactorer branch, tag, or SHA used for internal script checkouts. Leave blank for the selected workflow commit with self, or main with an explicit repository.
         required: false
         type: string
         default: ""
@@ -157,11 +167,7 @@ on:
         type: string
         default: "low"
 env:
-  REFACTORER_REPOSITORY: jbpextra/RefactorerLM
   REFACTORER_TOOL_CHECKOUT_PATH: .refactorer-tool
-  # Keep all Refactorer checkouts on one resolved ref. workflow_dispatch falls
-  # back to the selected workflow commit when refactorer_ref is blank.
-  REFACTORER_SOURCE_REF: ${{ inputs.refactorer_ref || github.sha }}
 
 jobs:
   detect-smells:
@@ -170,6 +176,8 @@ jobs:
       smells-detected: ${{ steps.filter-smells.outputs.smells-detected || 'false' }}
       smell-uuids: ${{ steps.filter-smells.outputs.smell-uuids || '[]' }}
       target-directory: ${{ steps.smell-detector.outputs.target-directory }}
+      refactorer-repository: ${{ steps.resolve-source.outputs.repository }}
+      refactorer-sha: ${{ steps.freeze-source.outputs.sha }}
     steps:
       - name: Install Act dependencies
         if: ${{ env.ACT }}
@@ -187,18 +195,46 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Resolve Refactorer source
+        id: resolve-source
+        shell: bash
+        env:
+          INPUT_REPOSITORY: ${{ inputs.refactorer_repository }}
+          INPUT_REF: ${{ inputs.refactorer_ref }}
+          CALLER_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          # Defaults differ by trigger. A reusable caller's event_name may itself
+          # be workflow_dispatch, so never infer the tool repository from it.
+          SOURCE_REPOSITORY="${INPUT_REPOSITORY:-jbpextra/RefactorerLM}"
+          if [ "$SOURCE_REPOSITORY" = "self" ]; then
+            SOURCE_REPOSITORY="$CALLER_REPOSITORY"
+            SOURCE_REF="${INPUT_REF:-$WORKFLOW_SHA}"
+          else
+            SOURCE_REF="${INPUT_REF:-main}"
+          fi
+
+          if [[ ! "$SOURCE_REPOSITORY" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] ||
+             [[ -z "$SOURCE_REF" || "$SOURCE_REF" == *$'\n'* || "$SOURCE_REF" == *$'\r'* ]]; then
+            echo "::error::Invalid Refactorer repository or ref."
+            exit 1
+          fi
+          echo "repository=$SOURCE_REPOSITORY" >> "$GITHUB_OUTPUT"
+          echo "ref=$SOURCE_REF" >> "$GITHUB_OUTPUT"
+
       # Do not perform a full Refactorer checkout before detection. Checkout the
       # detector config and validator first, then remove the validator before
       # scanning so repository-root scans do not detect Refactorer code itself.
       # Replace this with a full checkout after detection.
       # For workflow_call, set refactorer_ref to the same ref as the caller's
-      # uses value when invoking anything other than main. For workflow_dispatch,
-      # leave it blank to use the selected workflow commit.
+      # uses value when invoking anything other than main. Manual self runs use
+      # the selected workflow commit. Freeze the first checkout before any files
+      # are removed, then reuse its SHA in every subsequent checkout.
       - name: Checkout Refactorer detector config
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.REFACTORER_REPOSITORY }}
-          ref: ${{ env.REFACTORER_SOURCE_REF }}
+          repository: ${{ steps.resolve-source.outputs.repository }}
+          ref: ${{ steps.resolve-source.outputs.ref }}
           token: ${{ secrets.REFACTORER_REPOSITORY_TOKEN || github.token }}
           path: ${{ env.REFACTORER_TOOL_CHECKOUT_PATH }}
           sparse-checkout: |
@@ -206,6 +242,15 @@ jobs:
             scripts/__init__.py
             scripts/selection_config.py
           sparse-checkout-cone-mode: false
+
+      - name: Freeze Refactorer source commit
+        id: freeze-source
+        shell: bash
+        env:
+          REFACTORER_TOOL_PATH: ${{ github.workspace }}/${{ env.REFACTORER_TOOL_CHECKOUT_PATH }}
+        run: |
+          SOURCE_SHA=$(git -C "$REFACTORER_TOOL_PATH" rev-parse --verify 'HEAD^{commit}')
+          echo "sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -215,7 +260,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install git+https://github.com/jbpextra/python_smells_detector@add-participant-to-architectural-smells
+          pip install git+https://github.com/jbpextra/python_smells_detector@fd75df397a70643ffab5dd91788c9721dae48157
           pip install pyyaml
 
       - name: Validate configuration
@@ -276,8 +321,8 @@ jobs:
         if: steps.smell-detector.outputs.smells-detected == 'true'
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.REFACTORER_REPOSITORY }}
-          ref: ${{ env.REFACTORER_SOURCE_REF }}
+          repository: ${{ steps.resolve-source.outputs.repository }}
+          ref: ${{ steps.freeze-source.outputs.sha }}
           token: ${{ secrets.REFACTORER_REPOSITORY_TOKEN || github.token }}
           path: ${{ env.REFACTORER_TOOL_CHECKOUT_PATH }}
 
@@ -400,8 +445,8 @@ jobs:
       - name: Checkout Refactorer tool source
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.REFACTORER_REPOSITORY }}
-          ref: ${{ env.REFACTORER_SOURCE_REF }}
+          repository: ${{ needs.detect-smells.outputs.refactorer-repository }}
+          ref: ${{ needs.detect-smells.outputs.refactorer-sha }}
           token: ${{ secrets.REFACTORER_REPOSITORY_TOKEN || github.token }}
           path: ${{ env.REFACTORER_TOOL_CHECKOUT_PATH }}
 

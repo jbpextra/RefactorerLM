@@ -89,6 +89,7 @@ jobs:
       contents: write
       pull-requests: write
     with:
+      refactorer_ref: main
       python_version: "3.13"
       config_file: refactor_configuration.yml
     secrets:
@@ -137,10 +138,36 @@ Common workflow inputs:
 | `base_branch` | Branch the pull request targets | Repository's default branch |
 | `max_parallel` | Number of findings processed at once | `2` |
 | `refactorer_ref` | Version of Refactorer's helper scripts | `main` for reusable workflow calls |
+| `refactorer_repository` | Repository containing Refactorer's helper scripts | `jbpextra/RefactorerLM` for reusable workflow calls |
 
-If you replace `@main` in the example with a tag, branch, or commit, set
-`refactorer_ref` to the same value. The workflow file documents all inputs and its
-outputs: `smells-detected`, `smell-uuids`, and `target-directory`.
+The example follows public `main`. Once an exact release tag has been published,
+pin both the workflow's `uses:` reference and `refactorer_ref` to that tag.
+For example, after a release named `v1.0.1` exists:
+
+```yaml
+    uses: jbpextra/RefactorerLM/.github/workflows/refactorer.yml@v1.0.1
+    with:
+      refactorer_ref: v1.0.1
+```
+
+When upgrading, change both values. You can also pin both to the same commit
+SHA. Using `main` opts into changes as they are published.
+
+To test a private development version through a reusable workflow, point
+`uses:` at that private repository and pass its name as `refactorer_repository`.
+Set `refactorer_ref` to the same private branch or SHA used in `uses:` and supply
+`REFACTORER_REPOSITORY_TOKEN` with read access to that repository. The caller
+must also be allowed to use its private reusable workflow. This selects the
+development helper scripts throughout the run.
+
+When running the tool's workflow directly through **Run workflow**, the default
+`refactorer_repository: self` uses the repository containing that workflow and,
+with a blank `refactorer_ref`, its selected commit. An explicit repository with
+a blank ref uses its `main` branch. Each run resolves the helper ref to one
+commit and reuses that commit across jobs.
+
+The workflow file documents all inputs and its outputs: `smells-detected`,
+`smell-uuids`, and `target-directory`.
 
 ## Local development
 
@@ -171,6 +198,10 @@ Tests are organized by scope:
 - `tests/integration/`: stage execution, artifact contracts, Git and SDK integration,
   workflow wiring, and the pipeline smoke test.
 - `tests/fixtures/` and `tests/conftest.py`: sample data and fixtures shared by both suites.
+
+Workflow contract tests cover source-repository selection and consistent helper
+commits. CI runs these lightweight checks independently of the full Python test
+matrix; they do not execute the refactoring workflow or call model services.
 
 Run either suite independently:
 
