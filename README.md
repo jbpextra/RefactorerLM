@@ -84,12 +84,12 @@ on:
 
 jobs:
   refactor:
-    uses: jbpextra/RefactorerLM/.github/workflows/refactorer.yml@main
+    uses: jbpextra/RefactorerLM/.github/workflows/refactorer.yml@v1.0.0
     permissions:
       contents: write
       pull-requests: write
     with:
-      refactorer_ref: main
+      refactorer_ref: v1.0.0
       python_version: "3.13"
       config_file: refactor_configuration.yml
     secrets:
@@ -140,14 +140,13 @@ Common workflow inputs:
 | `refactorer_ref` | Version of Refactorer's helper scripts | `main` for reusable workflow calls |
 | `refactorer_repository` | Repository containing Refactorer's helper scripts | `jbpextra/RefactorerLM` for reusable workflow calls |
 
-The example follows public `main`. Once an exact release tag has been published,
-pin both the workflow's `uses:` reference and `refactorer_ref` to that tag.
-For example, after a release named `v1.0.1` exists:
+The examples pin the published [v1.0.0 release](https://github.com/jbpextra/RefactorerLM/releases/tag/v1.0.0).
+Keep the workflow's `uses:` reference and `refactorer_ref` on the same version:
 
 ```yaml
-    uses: jbpextra/RefactorerLM/.github/workflows/refactorer.yml@v1.0.1
+    uses: jbpextra/RefactorerLM/.github/workflows/refactorer.yml@v1.0.0
     with:
-      refactorer_ref: v1.0.1
+      refactorer_ref: v1.0.0
 ```
 
 When upgrading, change both values. You can also pin both to the same commit
