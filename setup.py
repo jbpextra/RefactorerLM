@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="refactorer-tool",
-    version="1.0.0",
+    version="1.0.1",
     description="Automated refactoring tool to address architectural smells",
     python_requires=">=3.11",
     packages=find_packages(),
